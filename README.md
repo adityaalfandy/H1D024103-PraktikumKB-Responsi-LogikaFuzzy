@@ -1,3 +1,8 @@
+#### NAMA : Aditya Alfandy
+#### NIM : H1D024103
+#### Shift KRS : C
+#### Shift Akhir : A
+
 # 🔍 FuzzyGuard — Sistem Deteksi Kecurigaan Transaksi Bank
 
 > **Tugas Kecerdasan Buatan** — Sistem Inferensi Fuzzy Mamdani berbasis Web  
