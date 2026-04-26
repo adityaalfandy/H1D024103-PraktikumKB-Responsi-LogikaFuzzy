@@ -1,0 +1,1362 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FuzzyGuard — Sistem Deteksi Kecurigaan Transaksi</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Rajdhani:wght@400;500;600;700&family=Orbitron:wght@400;700;900&display=swap" rel="stylesheet">
+
+<style>
+:root {
+  --bg-base:     #060b14;
+  --bg-panel:    #0b1525;
+  --bg-card:     #0f1d30;
+  --bg-inset:    #091220;
+
+  --cyan:        #00d4ff;
+  --cyan-dim:    #0099bb;
+  --cyan-glow:   rgba(0, 212, 255, 0.15);
+  --green:       #00ff88;
+  --green-dim:   #00bb66;
+  --orange:      #ffaa00;
+  --red:         #ff3131;
+  --red-dim:     #bb2222;
+
+  --text-bright: #e8f4ff;
+  --text-mid:    #7aa4cc;
+  --text-dim:    #3a5a7a;
+  --border:      #1a3050;
+  --border-glow: rgba(0, 212, 255, 0.3);
+
+  --font-head:   'Orbitron', monospace;
+  --font-body:   'Rajdhani', sans-serif;
+  --font-mono:   'Share Tech Mono', monospace;
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+html { scroll-behavior: smooth; }
+
+body {
+  background: var(--bg-base);
+  color: var(--text-bright);
+  font-family: var(--font-body);
+  font-size: 15px;
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+/* Grid noise overlay */
+body::before {
+  content: '';
+  position: fixed; inset: 0;
+  background-image:
+    linear-gradient(rgba(0,212,255,0.02) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0,212,255,0.02) 1px, transparent 1px);
+  background-size: 40px 40px;
+  pointer-events: none;
+  z-index: 0;
+}
+
+
+.header {
+  position: relative;
+  padding: 28px 24px 20px;
+  border-bottom: 1px solid var(--border);
+  background: linear-gradient(180deg, rgba(0,212,255,0.04) 0%, transparent 100%);
+  overflow: hidden;
+}
+.header::before {
+  content: 'TRANSACTION ANOMALY DETECTION';
+  position: absolute;
+  top: 8px; right: 16px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-dim);
+  letter-spacing: 2px;
+}
+.header-inner { max-width: 1100px; margin: 0 auto; }
+
+.header h1 {
+  font-family: var(--font-head);
+  font-size: clamp(18px, 3.5vw, 30px);
+  font-weight: 900;
+  letter-spacing: 4px;
+  color: var(--text-bright);
+}
+.header h1 span { color: var(--cyan); }
+
+.header p { font-size: 13px; color: var(--text-mid); margin-top: 6px; font-family: var(--font-mono); }
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(0,212,255,0.6); }
+  50%       { opacity: .6; box-shadow: 0 0 0 6px rgba(0,212,255,0); }
+}
+
+/* ─── LAYOUT ─── */
+.container { max-width: 1100px; margin: 0 auto; padding: 24px 20px 60px; position: relative; z-index: 1; }
+
+.grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+@media (max-width: 700px) { .grid-2, .grid-3 { grid-template-columns: 1fr; } }
+
+/* ─── CARDS ─── */
+.card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 20px;
+  position: relative;
+  overflow: hidden;
+}
+.card::before {
+  content: '';
+  position: absolute; top: 0; left: 0; right: 0;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, var(--cyan), transparent);
+  opacity: 0;
+  transition: opacity .3s;
+}
+.card:hover::before { opacity: .5; }
+
+.card-title {
+  font-family: var(--font-head);
+  font-size: 11px;
+  letter-spacing: 3px;
+  color: var(--cyan);
+  text-transform: uppercase;
+  margin-bottom: 16px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.card-title::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: linear-gradient(90deg, var(--border), transparent);
+}
+
+/* ─── STEP BADGE ─── */
+.step-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px; height: 22px;
+  border: 1px solid var(--cyan-dim);
+  border-radius: 3px;
+  font-family: var(--font-head);
+  font-size: 9px;
+  color: var(--cyan);
+  flex-shrink: 0;
+}
+
+/* ─── FORM INPUTS ─── */
+.input-group { margin-bottom: 20px; }
+.input-label {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-mid);
+  letter-spacing: 1px;
+  margin-bottom: 8px;
+}
+.input-label .val-display {
+  font-size: 14px;
+  color: var(--cyan);
+  font-weight: bold;
+}
+
+.range-wrap { position: relative; }
+
+input[type="range"] {
+  -webkit-appearance: none;
+  width: 100%;
+  height: 4px;
+  background: var(--bg-inset);
+  border-radius: 2px;
+  outline: none;
+  cursor: pointer;
+}
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 16px; height: 16px;
+  border-radius: 3px;
+  background: var(--cyan);
+  cursor: pointer;
+  box-shadow: 0 0 8px rgba(0,212,255,.6);
+  transition: transform .15s;
+}
+input[type="range"]::-webkit-slider-thumb:hover { transform: scale(1.3); }
+
+.range-ticks {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 4px;
+}
+.range-ticks span { font-family: var(--font-mono); font-size: 9px; color: var(--text-dim); }
+
+.num-input {
+  width: 100%;
+  background: var(--bg-inset);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--cyan);
+  font-family: var(--font-mono);
+  font-size: 15px;
+  padding: 8px 12px;
+  outline: none;
+  margin-top: 8px;
+  transition: border-color .2s;
+}
+.num-input:focus { border-color: var(--cyan-dim); box-shadow: 0 0 0 2px rgba(0,212,255,.12); }
+
+/* ─── BUTTON ─── */
+.btn-analyze {
+  width: 100%;
+  margin-top: 4px;
+  padding: 14px;
+  background: transparent;
+  border: 1px solid var(--cyan);
+  border-radius: 4px;
+  color: var(--cyan);
+  font-family: var(--font-head);
+  font-size: 12px;
+  letter-spacing: 3px;
+  cursor: pointer;
+  position: relative;
+  overflow: hidden;
+  transition: all .2s;
+}
+.btn-analyze::before {
+  content: '';
+  position: absolute; top: 0; left: -100%; width: 100%; height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(0,212,255,.15), transparent);
+  transition: left .4s;
+}
+.btn-analyze:hover { background: rgba(0,212,255,.08); box-shadow: 0 0 20px rgba(0,212,255,.2); }
+.btn-analyze:hover::before { left: 100%; }
+.btn-analyze:active { transform: scale(.98); }
+.btn-analyze:disabled { opacity: .4; cursor: not-allowed; }
+
+/* ─── MF CHARTS ─── */
+.mf-canvas-wrap {
+  background: var(--bg-inset);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 8px;
+}
+canvas { display: block; width: 100%; }
+
+.legend { display: flex; gap: 14px; flex-wrap: wrap; margin-top: 8px; }
+.legend-item { display: flex; align-items: center; gap: 5px; font-family: var(--font-mono); font-size: 10px; color: var(--text-mid); }
+.legend-dot { width: 10px; height: 3px; border-radius: 2px; }
+
+/* ─── MEMBERSHIP VALUE BADGES ─── */
+.mf-badges { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+.mf-badge {
+  padding: 4px 10px;
+  border-radius: 3px;
+  border: 1px solid;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  transition: all .3s;
+}
+.mf-badge.low   { border-color: var(--green-dim);  color: var(--green);  background: rgba(0,255,136,.07); }
+.mf-badge.mid   { border-color: #bb6600; color: var(--orange); background: rgba(255,170,0,.07);  }
+.mf-badge.high  { border-color: var(--red-dim);    color: var(--red);    background: rgba(255,49,49,.07); }
+.mf-badge.blue  { border-color: var(--cyan-dim);   color: var(--cyan);   background: rgba(0,212,255,.07); }
+.mf-badge.pulse { transform: scale(1.05); box-shadow: 0 0 10px currentColor; }
+
+/* ─── RULE TABLE ─── */
+.rule-table { width: 100%; border-collapse: collapse; font-family: var(--font-mono); font-size: 11px; }
+.rule-table thead tr { border-bottom: 1px solid var(--border); }
+.rule-table th { padding: 6px 10px; text-align: left; color: var(--text-dim); font-weight: normal; letter-spacing: 1px; text-transform: uppercase; font-size: 9px; }
+.rule-table td { padding: 5px 10px; border-bottom: 1px solid rgba(26,48,80,.5); }
+.rule-table tr.active-row { background: rgba(0,212,255,.04); }
+.rule-table tr.active-row td:first-child { border-left: 2px solid var(--cyan); }
+
+.fire-bar-wrap { width: 90px; height: 6px; background: var(--bg-inset); border-radius: 3px; display: inline-block; }
+.fire-bar { height: 100%; border-radius: 3px; transition: width .5s ease; }
+
+.tag { display: inline-block; padding: 1px 7px; border-radius: 2px; font-size: 9px; letter-spacing: 1px; }
+.tag.rendah { background: rgba(0,255,136,.12); color: var(--green);  border: 1px solid rgba(0,255,136,.3); }
+.tag.sedang { background: rgba(255,170,0,.12); color: var(--orange); border: 1px solid rgba(255,170,0,.3); }
+.tag.tinggi { background: rgba(255,49,49,.12);  color: var(--red);   border: 1px solid rgba(255,49,49,.3); }
+.tag.zero   { background: rgba(255,255,255,.04); color: var(--text-dim); border: 1px solid var(--border); }
+
+/* ─── ALPHA DISPLAY ─── */
+.alpha-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 8px; }
+.alpha-box {
+  background: var(--bg-inset);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 12px;
+  text-align: center;
+}
+.alpha-box .alpha-label { font-family: var(--font-mono); font-size: 9px; color: var(--text-dim); letter-spacing: 2px; text-transform: uppercase; margin-bottom: 6px; }
+.alpha-box .alpha-val   { font-family: var(--font-head); font-size: 20px; }
+.alpha-box.r .alpha-val { color: var(--green); }
+.alpha-box.s .alpha-val { color: var(--orange); }
+.alpha-box.t .alpha-val { color: var(--red); }
+
+/* ─── DEFUZZIFICATION CHART ─── */
+.defu-wrap { background: var(--bg-inset); border: 1px solid var(--border); border-radius: 4px; padding: 10px; }
+.defu-formula {
+  background: var(--bg-inset);
+  border-left: 3px solid var(--cyan-dim);
+  padding: 10px 14px;
+  margin: 10px 0;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text-mid);
+  border-radius: 0 4px 4px 0;
+}
+.defu-formula .val { color: var(--cyan); }
+
+/* ─── FINAL RESULT ─── */
+.result-panel {
+  text-align: center;
+  padding: 32px 20px;
+  position: relative;
+  overflow: hidden;
+}
+.result-panel::before {
+  content: '';
+  position: absolute; inset: 0;
+  background: radial-gradient(ellipse at center, var(--result-glow, rgba(0,212,255,.06)) 0%, transparent 65%);
+  pointer-events: none;
+}
+
+.gauge-wrap { position: relative; display: inline-block; margin-bottom: 16px; }
+.gauge-label {
+  position: absolute;
+  bottom: 10px; left: 50%;
+  transform: translateX(-50%);
+  font-family: var(--font-head);
+  font-size: 11px;
+  letter-spacing: 3px;
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+
+.result-value {
+  font-family: var(--font-head);
+  font-size: 52px;
+  font-weight: 900;
+  line-height: 1;
+  color: var(--result-color, var(--cyan));
+  text-shadow: 0 0 30px var(--result-color, var(--cyan));
+  transition: color .5s, text-shadow .5s;
+}
+.result-kategori {
+  font-family: var(--font-head);
+  font-size: 22px;
+  letter-spacing: 5px;
+  color: var(--result-color, var(--cyan));
+  margin-top: 6px;
+  transition: color .5s;
+}
+.result-desc { font-size: 13px; color: var(--text-mid); margin-top: 12px; max-width: 360px; margin-left: auto; margin-right: auto; line-height: 1.6; font-family: var(--font-mono); }
+
+/* ─── SECTION DIVIDER ─── */
+.section-title {
+  font-family: var(--font-head);
+  font-size: 10px;
+  letter-spacing: 4px;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  margin: 28px 0 14px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.section-title::before, .section-title::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+}
+
+/* ─── HIDDEN / REVEAL ─── */
+#results-section { display: none; animation: fadeSlideIn .4s ease; }
+#results-section.visible { display: block; }
+
+@keyframes fadeSlideIn {
+  from { opacity: 0; transform: translateY(16px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ─── LOADING ─── */
+.spinner {
+  display: inline-block;
+  width: 16px; height: 16px;
+  border: 2px solid rgba(0,212,255,.2);
+  border-top-color: var(--cyan);
+  border-radius: 50%;
+  animation: spin .7s linear infinite;
+  vertical-align: middle;
+  margin-right: 8px;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ─── ERROR ─── */
+.error-msg {
+  background: rgba(255,49,49,.1);
+  border: 1px solid rgba(255,49,49,.3);
+  border-radius: 4px;
+  padding: 10px 14px;
+  color: var(--red);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  margin-top: 12px;
+  display: none;
+}
+
+/* ─── TOOLTIP ─── */
+[data-tip] { position: relative; cursor: help; }
+[data-tip]::after {
+  content: attr(data-tip);
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  color: var(--text-mid);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  padding: 5px 10px;
+  border-radius: 3px;
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity .2s;
+  z-index: 10;
+}
+[data-tip]:hover::after { opacity: 1; }
+
+/* ─── SCROLLBAR ─── */
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: var(--bg-base); }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--cyan-dim); }
+</style>
+</head>
+
+<body>
+
+<!-- ═══════════ HEADER ═══════════ -->
+<header class="header">
+  <div class="header-inner">
+    <h1>SISTEM DETEKSI<br><span>KECURIGAAN TRANSAKSI</span></h1>
+  </div>
+</header>
+
+<!-- ═══════════ MAIN ═══════════ -->
+<main class="container">
+
+  <!-- ── GRAFIK MF INPUT (statis) ── -->
+  <div class="section-title">Membership Functions — Variabel Input</div>
+
+  <div class="grid-3">
+    <!-- Chart Frekuensi -->
+    <div class="card">
+      <div class="card-title"><div class="step-badge">MF</div> Frekuensi Transfer / Hari</div>
+      <div class="mf-canvas-wrap">
+        <canvas id="chartFreq" height="110"></canvas>
+      </div>
+      <div class="legend">
+        <div class="legend-item"><div class="legend-dot" style="background:#00ff88"></div>Rendah (0–5)</div>
+        <div class="legend-item"><div class="legend-dot" style="background:#ffaa00"></div>Sedang (3–12)</div>
+        <div class="legend-item"><div class="legend-dot" style="background:#ff3131"></div>Tinggi (10–20)</div>
+      </div>
+      <div class="mf-badges" id="badges-frekuensi">
+        <span class="mf-badge low" id="b-freq-r">Rendah: –</span>
+        <span class="mf-badge mid" id="b-freq-s">Sedang: –</span>
+        <span class="mf-badge high" id="b-freq-t">Tinggi: –</span>
+      </div>
+    </div>
+
+    <!-- Chart Nominal -->
+    <div class="card">
+      <div class="card-title"><div class="step-badge">MF</div> Nominal Transfer / Hari</div>
+      <div class="mf-canvas-wrap">
+        <canvas id="chartNom" height="110"></canvas>
+      </div>
+      <div class="legend">
+        <div class="legend-item"><div class="legend-dot" style="background:#00ff88"></div>Kecil (0–1.5jt)</div>
+        <div class="legend-item"><div class="legend-dot" style="background:#ffaa00"></div>Sedang (1–3.5jt)</div>
+        <div class="legend-item"><div class="legend-dot" style="background:#ff3131"></div>Besar (3–5jt)</div>
+      </div>
+      <div class="mf-badges">
+        <span class="mf-badge low"  id="b-nom-k">Kecil: –</span>
+        <span class="mf-badge mid"  id="b-nom-s">Sedang: –</span>
+        <span class="mf-badge high" id="b-nom-b">Besar: –</span>
+      </div>
+    </div>
+
+    <!-- Chart Waktu -->
+    <div class="card">
+      <div class="card-title"><div class="step-badge">MF</div> Waktu Transaksi</div>
+      <div class="mf-canvas-wrap">
+        <canvas id="chartWaktu" height="110"></canvas>
+      </div>
+      <div class="legend">
+        <div class="legend-item"><div class="legend-dot" style="background:#ffaa00"></div>Siang (08–17)</div>
+        <div class="legend-item"><div class="legend-dot" style="background:#ff6633"></div>Malam (17–22)</div>
+        <div class="legend-item"><div class="legend-dot" style="background:#cc44ff"></div>Larut (22–05)</div>
+      </div>
+      <div class="mf-badges">
+        <span class="mf-badge mid"  id="b-wkt-s" style="border-color:#bb6600">Siang: –</span>
+        <span class="mf-badge high" id="b-wkt-m" style="color:#ff6633;border-color:#cc4422;background:rgba(255,102,51,.07)">Malam: –</span>
+        <span class="mf-badge high" id="b-wkt-l" style="color:#cc44ff;border-color:#993399;background:rgba(204,68,255,.07)">Larut: –</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── INPUT FORM ── -->
+  <div class="section-title">Input Parameter Transaksi</div>
+
+  <div class="grid-2">
+    <div class="card">
+      <div class="card-title"><div class="step-badge">01</div> Parameter Transaksi</div>
+
+      <!-- Frekuensi -->
+      <div class="input-group">
+        <div class="input-label" data-tip="Jumlah kali transfer dalam 1 hari">
+          FREKUENSI TRANSFER / HARI (kali)
+          <span class="val-display" id="disp-freq">0</span>
+        </div>
+        <div class="range-wrap">
+          <input type="range" id="sl-freq" min="0" max="20" step="0.5" value="0"
+                 oninput="syncInput(this,'inp-freq','disp-freq'); updateMFBadges()">
+        </div>
+        <div class="range-ticks"><span>0</span><span>5</span><span>10</span><span>15</span><span>20</span></div>
+        <input type="number" id="inp-freq" class="num-input" min="0" max="20" step="0.5" value="0"
+               oninput="syncSlider(this,'sl-freq','disp-freq'); updateMFBadges()">
+      </div>
+
+      <!-- Nominal -->
+      <div class="input-group">
+        <div class="input-label" data-tip="Total nominal dalam 1 hari (Rp)">
+          NOMINAL TRANSFER / HARI (Rp)
+          <span class="val-display" id="disp-nom">Rp 0</span>
+        </div>
+        <div class="range-wrap">
+          <input type="range" id="sl-nom" min="0" max="5000000" step="50000" value="0"
+                 oninput="syncInputNom(this,'inp-nom','disp-nom'); updateMFBadges()">
+        </div>
+        <div class="range-ticks"><span>0</span><span>1.25jt</span><span>2.5jt</span><span>3.75jt</span><span>5jt</span></div>
+        <input type="number" id="inp-nom" class="num-input" min="0" max="5000000" step="50000" value="0"
+               oninput="syncSliderNom(this,'sl-nom','disp-nom'); updateMFBadges()">
+      </div>
+
+      <!-- Jam -->
+      <div class="input-group" style="margin-bottom:0">
+        <div class="input-label" data-tip="Jam transaksi (0=tengah malam, 12=siang)">
+          WAKTU TRANSAKSI (jam)
+          <span class="val-display" id="disp-jam">00:00</span>
+        </div>
+        <div class="range-wrap">
+          <input type="range" id="sl-jam" min="0" max="24" step="0.5" value="9"
+                 oninput="syncJam(this,'inp-jam','disp-jam'); updateMFBadges()">
+        </div>
+        <div class="range-ticks"><span>00</span><span>06</span><span>12</span><span>18</span><span>24</span></div>
+        <input type="number" id="inp-jam" class="num-input" min="0" max="24" step="0.5" value="9"
+               oninput="syncSliderJam(this,'sl-jam','disp-jam'); updateMFBadges()">
+      </div>
+    </div>
+
+    <!-- Contoh Preset + Tombol Analisis -->
+    <div class="card" style="display:flex;flex-direction:column;justify-content:space-between">
+      <div>
+        <div class="card-title"><div class="step-badge">02</div> Contoh Preset</div>
+        <p style="font-family:var(--font-mono);font-size:10px;color:var(--text-dim);margin-bottom:12px;">
+          Klik untuk muat skenario contoh:
+        </p>
+        <div style="display:flex;flex-direction:column;gap:8px">
+          <button class="preset-btn" onclick="loadPreset(2, 500000, 10)"
+            style="background:rgba(0,255,136,.06);border:1px solid rgba(0,255,136,.2);color:var(--green);padding:10px 14px;border-radius:4px;font-family:var(--font-mono);font-size:11px;cursor:pointer;text-align:left;transition:all .2s;"
+            onmouseover="this.style.background='rgba(0,255,136,.12)'" onmouseout="this.style.background='rgba(0,255,136,.06)'">
+            ✔ &nbsp;Skenario Rendah — 2 transfer, Rp 500.000, pukul 10:00
+          </button>
+          <button class="preset-btn" onclick="loadPreset(7, 2000000, 19.5)"
+            style="background:rgba(255,170,0,.06);border:1px solid rgba(255,170,0,.2);color:var(--orange);padding:10px 14px;border-radius:4px;font-family:var(--font-mono);font-size:11px;cursor:pointer;text-align:left;transition:all .2s;"
+            onmouseover="this.style.background='rgba(255,170,0,.12)'" onmouseout="this.style.background='rgba(255,170,0,.06)'">
+            ⚠ &nbsp;Skenario Sedang — 7 transfer, Rp 2.000.000, pukul 19:30
+          </button>
+          <button class="preset-btn" onclick="loadPreset(15, 4000000, 23)"
+            style="background:rgba(255,49,49,.06);border:1px solid rgba(255,49,49,.2);color:var(--red);padding:10px 14px;border-radius:4px;font-family:var(--font-mono);font-size:11px;cursor:pointer;text-align:left;transition:all .2s;"
+            onmouseover="this.style.background='rgba(255,49,49,.12)'" onmouseout="this.style.background='rgba(255,49,49,.06)'">
+            ✘ &nbsp;Skenario Tinggi — 15 transfer, Rp 4.000.000, pukul 23:00
+          </button>
+        </div>
+      </div>
+
+      <div>
+        <div id="error-msg" class="error-msg"></div>
+        <button id="btn-analyze" class="btn-analyze" onclick="analisis()">
+          ▶&nbsp;&nbsp;JALANKAN ANALISIS FUZZY
+        </button>
+      </div>
+    </div>
+  </div>
+
+
+  <!-- ════════════════════════════════════════
+       HASIL ANALISIS (tersembunyi sampai klik)
+       ════════════════════════════════════════ -->
+  <div id="results-section">
+
+    <!-- STEP 1: FUZZIFIKASI -->
+    <div class="section-title">Step 1 — Fuzzifikasi</div>
+    <div class="grid-3" id="fuzzy-step1">
+      <div class="card">
+        <div class="card-title"><div class="step-badge">F</div> Frekuensi</div>
+        <div id="res-frek-badges" class="mf-badges" style="flex-direction:column;gap:8px"></div>
+      </div>
+      <div class="card">
+        <div class="card-title"><div class="step-badge">N</div> Nominal</div>
+        <div id="res-nom-badges" class="mf-badges" style="flex-direction:column;gap:8px"></div>
+      </div>
+      <div class="card">
+        <div class="card-title"><div class="step-badge">W</div> Waktu</div>
+        <div id="res-wkt-badges" class="mf-badges" style="flex-direction:column;gap:8px"></div>
+      </div>
+    </div>
+
+    <!-- STEP 2: RULE EVALUATION -->
+    <div class="section-title">Step 2 — Evaluasi Rule (Inferensi Mamdani)</div>
+    <div class="card">
+      <div class="card-title"><div class="step-badge">02</div> Rule Base — AND = MIN, Agregasi = MAX</div>
+      <div style="overflow-x:auto">
+        <table class="rule-table" id="rule-table">
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>Antecedent (IF)</th>
+              <th>Firing (α)</th>
+              <th style="width:100px">Kekuatan</th>
+              <th>Konsekuen</th>
+            </tr>
+          </thead>
+          <tbody id="rule-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- STEP 3: ALPHA -->
+    <div class="section-title">Step 2b — Agregasi Alpha per Kategori Output (MAX)</div>
+    <div class="card">
+      <div class="card-title"><div class="step-badge">α</div> Nilai Alpha Agregasi</div>
+      <div class="alpha-grid">
+        <div class="alpha-box r">
+          <div class="alpha-label">α Rendah</div>
+          <div class="alpha-val" id="a-rendah">–</div>
+        </div>
+        <div class="alpha-box s">
+          <div class="alpha-label">α Sedang</div>
+          <div class="alpha-val" id="a-sedang">–</div>
+        </div>
+        <div class="alpha-box t">
+          <div class="alpha-label">α Tinggi</div>
+          <div class="alpha-val" id="a-tinggi">–</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- STEP 4: DEFUZZIFIKASI -->
+    <div class="section-title">Step 3 — Defuzzifikasi (Metode Centroid)</div>
+    <div class="grid-2">
+      <div class="card">
+        <div class="card-title"><div class="step-badge">03</div> Aggregated Output MF</div>
+        <div class="defu-wrap">
+          <canvas id="chartDefu" height="140"></canvas>
+        </div>
+        <div class="legend" style="margin-top:8px">
+          <div class="legend-item"><div class="legend-dot" style="background:#00ff8866"></div>Rendah (clipped)</div>
+          <div class="legend-item"><div class="legend-dot" style="background:#ffaa0066"></div>Sedang (clipped)</div>
+          <div class="legend-item"><div class="legend-dot" style="background:#ff313166"></div>Tinggi (clipped)</div>
+          <div class="legend-item"><div class="legend-dot" style="background:#00d4ff"></div>Aggregated</div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-title"><div class="step-badge">∫</div> Perhitungan Centroid</div>
+        <div class="defu-formula">
+          Rumus:<br>
+          z* = Σ[x·μ(x)] / Σ[μ(x)]
+        </div>
+        <div class="defu-formula" id="defu-formula-vals" style="margin-bottom:0">
+          Menunggu perhitungan...
+        </div>
+      </div>
+    </div>
+
+    <!-- STEP 5: HASIL AKHIR -->
+    <div class="section-title">Step 4 — Hasil Akhir</div>
+    <div class="card">
+      <div class="result-panel" id="result-panel">
+        <div class="gauge-wrap">
+          <canvas id="gaugeCanvas" width="260" height="150"></canvas>
+          <div class="gauge-label">TINGKAT KECURIGAAN</div>
+        </div>
+        <div class="result-value" id="result-value">–</div>
+        <div class="result-kategori" id="result-kategori">–</div>
+        <div class="result-desc" id="result-desc"></div>
+      </div>
+    </div>
+
+  </div><!-- /results-section -->
+
+</main>
+
+<!-- ═══════════════════════════════════════════════
+     MF DATA FROM FLASK (JSON injected)
+     ═══════════════════════════════════════════════ -->
+<script>
+const MF_DATA = {{ mf_data | tojson }};
+</script>
+
+<script>
+/* ════════════════════════════════════════════════════
+   CANVAS DRAWING UTILITIES
+   ════════════════════════════════════════════════════ */
+
+const COLORS = {
+  rendah: '#00ff88', sedang: '#ffaa00', tinggi: '#ff3131',
+  kecil:  '#00ff88', besar:  '#ff3131',
+  siang:  '#ffaa00', malam:  '#ff6633', larut:  '#cc44ff',
+  cyan:   '#00d4ff', dim:    '#1a3050', text:   '#3a5a7a'
+};
+
+function setupCanvas(canvas) {
+  const dpr = window.devicePixelRatio || 1;
+  const rect = canvas.getBoundingClientRect();
+  canvas.width  = rect.width  * dpr || canvas.offsetWidth  * dpr;
+  canvas.height = (parseInt(canvas.getAttribute('height')) || 110) * dpr;
+  const ctx = canvas.getContext('2d');
+  ctx.scale(dpr, dpr);
+  return ctx;
+}
+
+function drawMFChart(canvasId, xVals, series, xMin, xMax, xLabel, indicator) {
+  const canvas = document.getElementById(canvasId);
+  if (!canvas) return;
+  const W = canvas.offsetWidth || 260;
+  const H = parseInt(canvas.getAttribute('height')) || 110;
+
+  const dpr = window.devicePixelRatio || 1;
+  canvas.width  = W * dpr;
+  canvas.height = H * dpr;
+  const ctx = canvas.getContext('2d');
+  ctx.scale(dpr, dpr);
+
+  const pad = { top: 10, right: 12, bottom: 28, left: 28 };
+  const cW = W - pad.left - pad.right;
+  const cH = H - pad.top - pad.bottom;
+
+  // Background
+  ctx.fillStyle = '#091220';
+  ctx.fillRect(0, 0, W, H);
+
+  // Gridlines
+  ctx.strokeStyle = '#1a3050';
+  ctx.lineWidth = 0.5;
+  for (let i = 0; i <= 4; i++) {
+    const y = pad.top + (i / 4) * cH;
+    ctx.beginPath(); ctx.moveTo(pad.left, y); ctx.lineTo(pad.left + cW, y); ctx.stroke();
+  }
+
+  // Y axis labels
+  ctx.fillStyle = '#3a5a7a';
+  ctx.font = '8px Share Tech Mono';
+  ctx.textAlign = 'right';
+  for (let i = 0; i <= 4; i++) {
+    const y = pad.top + ((4 - i) / 4) * cH;
+    ctx.fillText((i * 0.25).toFixed(2), pad.left - 3, y + 3);
+  }
+
+  // X axis labels
+  ctx.textAlign = 'center';
+  const xTicks = 5;
+  for (let i = 0; i <= xTicks; i++) {
+    const x = pad.left + (i / xTicks) * cW;
+    const val = xMin + (i / xTicks) * (xMax - xMin);
+    let lbl = val >= 1000000 ? (val/1000000).toFixed(1)+'jt' : val.toFixed(0);
+    ctx.fillText(lbl, x, H - 6);
+  }
+
+  // X axis line
+  ctx.strokeStyle = '#1a3050';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(pad.left, pad.top + cH);
+  ctx.lineTo(pad.left + cW, pad.top + cH);
+  ctx.stroke();
+
+  function toXY(xi, yi) {
+    return {
+      x: pad.left + ((xi - xMin) / (xMax - xMin)) * cW,
+      y: pad.top  + (1 - yi) * cH
+    };
+  }
+
+  // Draw each series
+  series.forEach(({ color, yVals, label }) => {
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 1.5;
+    ctx.shadowColor = color;
+    ctx.shadowBlur  = 4;
+    ctx.beginPath();
+    xVals.forEach((xv, i) => {
+      const {x, y} = toXY(xv, yVals[i]);
+      if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    });
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+
+    // Fill under curve
+    const firstXY = toXY(xVals[0], 0);
+    const lastXY  = toXY(xVals[xVals.length - 1], 0);
+    ctx.beginPath();
+    ctx.moveTo(firstXY.x, pad.top + cH);
+    xVals.forEach((xv, i) => {
+      const {x, y} = toXY(xv, yVals[i]);
+      ctx.lineTo(x, y);
+    });
+    ctx.lineTo(lastXY.x, pad.top + cH);
+    ctx.closePath();
+    ctx.fillStyle = color + '18';
+    ctx.fill();
+  });
+
+  // Indicator line (current value)
+  if (indicator !== null && indicator !== undefined) {
+    const ix = pad.left + ((indicator - xMin) / (xMax - xMin)) * cW;
+    ctx.strokeStyle = '#00d4ff';
+    ctx.lineWidth   = 1.5;
+    ctx.setLineDash([3, 3]);
+    ctx.beginPath();
+    ctx.moveTo(ix, pad.top);
+    ctx.lineTo(ix, pad.top + cH);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    ctx.fillStyle = '#00d4ff';
+    ctx.beginPath();
+    ctx.arc(ix, pad.top + 4, 3, 0, Math.PI * 2);
+    ctx.fill();
+  }
+}
+
+function drawDefuChart(canvasId, pts_rendah, pts_sedang, pts_tinggi, pts_agg, centroid) {
+  const canvas = document.getElementById(canvasId);
+  if (!canvas) return;
+  const W = canvas.offsetWidth || 400;
+  const H = parseInt(canvas.getAttribute('height')) || 140;
+  const dpr = window.devicePixelRatio || 1;
+  canvas.width  = W * dpr;
+  canvas.height = H * dpr;
+  const ctx = canvas.getContext('2d');
+  ctx.scale(dpr, dpr);
+
+  const pad = { top: 10, right: 12, bottom: 28, left: 28 };
+  const cW = W - pad.left - pad.right;
+  const cH = H - pad.top - pad.bottom;
+
+  ctx.fillStyle = '#091220';
+  ctx.fillRect(0, 0, W, H);
+
+  // Grid
+  ctx.strokeStyle = '#1a3050'; ctx.lineWidth = 0.5;
+  for (let i = 0; i <= 4; i++) {
+    const y = pad.top + (i / 4) * cH;
+    ctx.beginPath(); ctx.moveTo(pad.left, y); ctx.lineTo(pad.left + cW, y); ctx.stroke();
+  }
+  // X-axis labels
+  ctx.fillStyle = '#3a5a7a'; ctx.font = '8px Share Tech Mono'; ctx.textAlign = 'center';
+  [0,20,40,60,80,100].forEach(v => {
+    ctx.fillText(v, pad.left + (v / 100) * cW, H - 6);
+  });
+  // Y-axis
+  ctx.textAlign = 'right';
+  [0,.5,1].forEach(v => {
+    const y = pad.top + (1 - v) * cH;
+    ctx.fillText(v.toFixed(1), pad.left - 3, y + 3);
+  });
+
+  function toXY(xv, yv) {
+    return {
+      x: pad.left + (xv / 100) * cW,
+      y: pad.top  + (1 - yv) * cH
+    };
+  }
+
+  function drawFill(pts, color) {
+    if (!pts || pts.length === 0) return;
+    ctx.beginPath();
+    ctx.moveTo(pad.left, pad.top + cH);
+    pts.forEach(p => { const {x, y} = toXY(p.x, p.y); ctx.lineTo(x, y); });
+    ctx.lineTo(toXY(pts[pts.length-1].x, 0).x, pad.top + cH);
+    ctx.closePath();
+    ctx.fillStyle = color + '30';
+    ctx.fill();
+    ctx.strokeStyle = color + '66';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+  }
+
+  drawFill(pts_rendah, '#00ff88');
+  drawFill(pts_sedang, '#ffaa00');
+  drawFill(pts_tinggi, '#ff3131');
+
+  // Draw aggregated (bold)
+  if (pts_agg && pts_agg.length > 0) {
+    ctx.beginPath();
+    pts_agg.forEach((p, i) => {
+      const {x, y} = toXY(p.x, p.y);
+      if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    });
+    ctx.strokeStyle = '#00d4ff';
+    ctx.lineWidth   = 2;
+    ctx.shadowColor = '#00d4ff';
+    ctx.shadowBlur  = 6;
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+  }
+
+  // Centroid line
+  if (centroid !== null && centroid !== undefined) {
+    const cx = pad.left + (centroid / 100) * cW;
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth   = 1.5;
+    ctx.setLineDash([4, 3]);
+    ctx.beginPath();
+    ctx.moveTo(cx, pad.top);
+    ctx.lineTo(cx, pad.top + cH);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    ctx.fillStyle = '#ffffff';
+    ctx.font = '9px Share Tech Mono';
+    ctx.textAlign = 'center';
+    ctx.fillText('z*=' + centroid.toFixed(1), cx, pad.top + 8);
+
+    // Triangle marker
+    ctx.beginPath();
+    ctx.moveTo(cx, pad.top + cH);
+    ctx.lineTo(cx - 5, pad.top + cH + 10);
+    ctx.lineTo(cx + 5, pad.top + cH + 10);
+    ctx.closePath();
+    ctx.fillStyle = '#ffffff';
+    ctx.fill();
+  }
+}
+
+function drawGauge(canvasId, value, color) {
+  const canvas = document.getElementById(canvasId);
+  if (!canvas) return;
+  const W = 260, H = 150;
+  canvas.width  = W;
+  canvas.height = H;
+  const ctx = canvas.getContext('2d');
+
+  const cx = W / 2, cy = H - 20;
+  const r  = 110, rIn = 70;
+
+  // Background arc
+  ctx.strokeStyle = '#1a3050';
+  ctx.lineWidth   = 22;
+  ctx.lineCap     = 'round';
+  ctx.beginPath();
+  ctx.arc(cx, cy, (r + rIn) / 2, Math.PI, 0);
+  ctx.stroke();
+
+  // Colored arc
+  const pct   = Math.min(value, 100) / 100;
+  const start = Math.PI;
+  const end   = Math.PI + pct * Math.PI;
+
+  const grad = ctx.createLinearGradient(cx - r, cy, cx + r, cy);
+  grad.addColorStop(0,   '#00ff88');
+  grad.addColorStop(0.5, '#ffaa00');
+  grad.addColorStop(1,   '#ff3131');
+
+  ctx.strokeStyle = grad;
+  ctx.lineWidth   = 22;
+  ctx.shadowColor = color;
+  ctx.shadowBlur  = 20;
+  ctx.beginPath();
+  ctx.arc(cx, cy, (r + rIn) / 2, start, end);
+  ctx.stroke();
+  ctx.shadowBlur = 0;
+
+  // Tick marks
+  for (let i = 0; i <= 10; i++) {
+    const ang = Math.PI + (i / 10) * Math.PI;
+    const x1  = cx + Math.cos(ang) * (rIn - 4);
+    const y1  = cy + Math.sin(ang) * (rIn - 4);
+    const x2  = cx + Math.cos(ang) * (rIn - 12);
+    const y2  = cy + Math.sin(ang) * (rIn - 12);
+    ctx.strokeStyle = '#3a5a7a';
+    ctx.lineWidth   = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(x1, y1); ctx.lineTo(x2, y2);
+    ctx.stroke();
+    if (i % 5 === 0) {
+      ctx.fillStyle   = '#3a5a7a';
+      ctx.font        = '8px Share Tech Mono';
+      ctx.textAlign   = 'center';
+      const lx = cx + Math.cos(ang) * (rIn - 22);
+      const ly = cy + Math.sin(ang) * (rIn - 22);
+      ctx.fillText(i * 10, lx, ly + 3);
+    }
+  }
+
+  // Needle
+  const needleAng = Math.PI + pct * Math.PI;
+  const nx = cx + Math.cos(needleAng) * (rIn - 10);
+  const ny = cy + Math.sin(needleAng) * (rIn - 10);
+  ctx.strokeStyle = '#ffffff';
+  ctx.lineWidth   = 2.5;
+  ctx.lineCap     = 'round';
+  ctx.shadowColor = '#fff';
+  ctx.shadowBlur  = 8;
+  ctx.beginPath();
+  ctx.moveTo(cx, cy); ctx.lineTo(nx, ny);
+  ctx.stroke();
+  ctx.shadowBlur = 0;
+
+  // Center dot
+  ctx.fillStyle = '#ffffff';
+  ctx.beginPath();
+  ctx.arc(cx, cy, 6, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+/* ════════════════════════════════════════════════════
+   INPUT SYNC HELPERS
+   ════════════════════════════════════════════════════ */
+
+function syncInput(sl, inpId, dispId) {
+  document.getElementById(inpId).value = sl.value;
+  document.getElementById(dispId).textContent = sl.value;
+}
+function syncSlider(inp, slId, dispId) {
+  const v = Math.min(20, Math.max(0, +inp.value || 0));
+  document.getElementById(slId).value = v;
+  document.getElementById(dispId).textContent = v;
+}
+function syncInputNom(sl, inpId, dispId) {
+  document.getElementById(inpId).value = sl.value;
+  document.getElementById(dispId).textContent = 'Rp ' + (+sl.value).toLocaleString('id');
+}
+function syncSliderNom(inp, slId, dispId) {
+  const v = Math.min(5000000, Math.max(0, +inp.value || 0));
+  document.getElementById(slId).value = v;
+  document.getElementById(dispId).textContent = 'Rp ' + v.toLocaleString('id');
+}
+function syncJam(sl, inpId, dispId) {
+  document.getElementById(inpId).value = sl.value;
+  const h = Math.floor(+sl.value);
+  const m = Math.round((+sl.value - h) * 60);
+  document.getElementById(dispId).textContent = String(h).padStart(2,'0') + ':' + String(m).padStart(2,'0');
+}
+function syncSliderJam(inp, slId, dispId) {
+  const v = Math.min(24, Math.max(0, +inp.value || 0));
+  document.getElementById(slId).value = v;
+  const h = Math.floor(v), m = Math.round((v - h) * 60);
+  document.getElementById(dispId).textContent = String(h).padStart(2,'0') + ':' + String(m).padStart(2,'0');
+}
+
+/* ════════════════════════════════════════════════════
+   LIVE MF BADGE UPDATES (saat slider digeser)
+   ════════════════════════════════════════════════════ */
+
+function trimf_js(x, a, b, c) {
+  if (x < a || x > c) return 0;
+  if (x <= b) return b === a ? 1 : (x - a) / (b - a);
+  return c === b ? 1 : (c - x) / (c - b);
+}
+
+function fuzz_freq(v) {
+  return {
+    r: trimf_js(v, 0, 0, 5),
+    s: trimf_js(v, 3, 7.5, 12),
+    t: trimf_js(v, 10, 20, 20)
+  };
+}
+function fuzz_nom(v) {
+  return {
+    k: trimf_js(v, 0, 0, 1500000),
+    s: trimf_js(v, 1000000, 2250000, 3500000),
+    b: trimf_js(v, 3000000, 5000000, 5000000)
+  };
+}
+function fuzz_waktu(v) {
+  let l = 0;
+  if (v >= 22 && v <= 24) l = (v - 22) / 2;
+  else if (v >= 0 && v <= 5) l = (5 - v) / 5;
+  return {
+    si: trimf_js(v, 8, 12.5, 17),
+    ma: trimf_js(v, 17, 19.5, 22),
+    la: l
+  };
+}
+
+function updateMFBadges() {
+  const freq = +document.getElementById('sl-freq').value;
+  const nom  = +document.getElementById('sl-nom').value;
+  const jam  = +document.getElementById('sl-jam').value;
+
+  const f = fuzz_freq(freq);
+  const n = fuzz_nom(nom);
+  const w = fuzz_waktu(jam);
+
+  setBadge('b-freq-r', 'Rendah', f.r);
+  setBadge('b-freq-s', 'Sedang', f.s);
+  setBadge('b-freq-t', 'Tinggi', f.t);
+
+  setBadge('b-nom-k', 'Kecil',  n.k);
+  setBadge('b-nom-s', 'Sedang', n.s);
+  setBadge('b-nom-b', 'Besar',  n.b);
+
+  setBadge('b-wkt-s', 'Siang',  w.si);
+  setBadge('b-wkt-m', 'Malam',  w.ma);
+  setBadge('b-wkt-l', 'Larut',  w.la);
+
+  // Redraw MF charts with indicator
+  renderStaticCharts(freq, nom, jam);
+}
+
+function setBadge(id, label, val) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.textContent = `${label}: ${val.toFixed(4)}`;
+  el.classList.toggle('pulse', val > 0);
+}
+
+/* ════════════════════════════════════════════════════
+   RENDER STATIC MF CHARTS
+   ════════════════════════════════════════════════════ */
+
+function renderStaticCharts(freq_ind, nom_ind, jam_ind) {
+  const d = MF_DATA;
+  drawMFChart('chartFreq',
+    d.frekuensi.x,
+    [
+      { color: '#00ff88', yVals: d.frekuensi.rendah, label: 'Rendah' },
+      { color: '#ffaa00', yVals: d.frekuensi.sedang, label: 'Sedang' },
+      { color: '#ff3131', yVals: d.frekuensi.tinggi, label: 'Tinggi' }
+    ],
+    0, 20, 'kali', freq_ind
+  );
+  drawMFChart('chartNom',
+    d.nominal.x,
+    [
+      { color: '#00ff88', yVals: d.nominal.kecil,  label: 'Kecil' },
+      { color: '#ffaa00', yVals: d.nominal.sedang, label: 'Sedang' },
+      { color: '#ff3131', yVals: d.nominal.besar,  label: 'Besar' }
+    ],
+    0, 5000000, 'Rp', nom_ind
+  );
+  drawMFChart('chartWaktu',
+    d.waktu.x,
+    [
+      { color: '#ffaa00', yVals: d.waktu.siang, label: 'Siang' },
+      { color: '#ff6633', yVals: d.waktu.malam, label: 'Malam' },
+      { color: '#cc44ff', yVals: d.waktu.larut, label: 'Larut' }
+    ],
+    0, 24, 'jam', jam_ind
+  );
+}
+
+/* ════════════════════════════════════════════════════
+   PRESET LOADER
+   ════════════════════════════════════════════════════ */
+
+function loadPreset(freq, nom, jam) {
+  document.getElementById('sl-freq').value   = freq;
+  document.getElementById('inp-freq').value  = freq;
+  document.getElementById('disp-freq').textContent = freq;
+
+  document.getElementById('sl-nom').value    = nom;
+  document.getElementById('inp-nom').value   = nom;
+  document.getElementById('disp-nom').textContent = 'Rp ' + nom.toLocaleString('id');
+
+  document.getElementById('sl-jam').value    = jam;
+  document.getElementById('inp-jam').value   = jam;
+  const h = Math.floor(jam), m = Math.round((jam - h) * 60);
+  document.getElementById('disp-jam').textContent = String(h).padStart(2,'0') + ':' + String(m).padStart(2,'0');
+
+  updateMFBadges();
+}
+
+/* ════════════════════════════════════════════════════
+   MAIN ANALYSIS — AJAX TO FLASK
+   ════════════════════════════════════════════════════ */
+
+async function analisis() {
+  const btn = document.getElementById('btn-analyze');
+  const errEl = document.getElementById('error-msg');
+  errEl.style.display = 'none';
+
+  const frekuensi = +document.getElementById('inp-freq').value;
+  const nominal   = +document.getElementById('inp-nom').value;
+  const jam       = +document.getElementById('inp-jam').value;
+
+  btn.disabled   = true;
+  btn.innerHTML  = '<span class="spinner"></span>MEMPROSES ANALISIS...';
+
+  try {
+    const resp = await fetch('/hitung', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ frekuensi, nominal, jam })
+    });
+    const data = await resp.json();
+
+    if (!resp.ok) {
+      throw new Error(data.error || 'Terjadi kesalahan pada server');
+    }
+
+    renderResults(data);
+
+  } catch (e) {
+    errEl.textContent = '⚠ Error: ' + e.message;
+    errEl.style.display = 'block';
+  } finally {
+    btn.disabled  = false;
+    btn.innerHTML = '▶&nbsp;&nbsp;JALANKAN ANALISIS FUZZY';
+  }
+}
+
+/* ════════════════════════════════════════════════════
+   RENDER RESULTS
+   ════════════════════════════════════════════════════ */
+
+function renderResults(data) {
+  const sec = document.getElementById('results-section');
+  sec.classList.add('visible');
+
+  /* ─── STEP 1: Fuzzifikasi Badges ─── */
+  const f = data.fuzzifikasi;
+
+  document.getElementById('res-frek-badges').innerHTML = `
+    ${mfRow('Rendah', f.frekuensi.rendah, 'low')}
+    ${mfRow('Sedang', f.frekuensi.sedang, 'mid')}
+    ${mfRow('Tinggi', f.frekuensi.tinggi, 'high')}
+  `;
+  document.getElementById('res-nom-badges').innerHTML = `
+    ${mfRow('Kecil',  f.nominal.kecil,  'low')}
+    ${mfRow('Sedang', f.nominal.sedang, 'mid')}
+    ${mfRow('Besar',  f.nominal.besar,  'high')}
+  `;
+  document.getElementById('res-wkt-badges').innerHTML = `
+    ${mfRow('Siang',       f.waktu.siang,       'mid')}
+    ${mfRow('Malam',       f.waktu.malam,       'high', '#ff6633;border-color:#cc4422;background:rgba(255,102,51,.07)')}
+    ${mfRow('Larut Malam', f.waktu.larut_malam, 'high', '#cc44ff;border-color:#993399;background:rgba(204,68,255,.07)')}
+  `;
+
+  /* ─── STEP 2: Rule Table ─── */
+  const tbody = document.getElementById('rule-tbody');
+  tbody.innerHTML = '';
+  data.rules.forEach(r => {
+    const isActive = r.firing > 0;
+    const barColor = r.konsekuen === 'rendah' ? '#00ff88' : r.konsekuen === 'sedang' ? '#ffaa00' : '#ff3131';
+    const barW     = Math.round(r.firing * 100);
+    tbody.innerHTML += `
+      <tr class="${isActive ? 'active-row' : ''}">
+        <td style="color:var(--cyan);font-weight:bold">${r.id}</td>
+        <td style="color:${isActive ? 'var(--text-bright)' : 'var(--text-dim)'}">${r.deskripsi}</td>
+        <td style="color:${isActive ? 'white' : 'var(--text-dim)'}; font-weight:${isActive?'bold':'normal'}">${r.firing}</td>
+        <td>
+          <div class="fire-bar-wrap">
+            <div class="fire-bar" style="width:${barW}%; background:${barColor}"></div>
+          </div>
+        </td>
+        <td><span class="tag ${r.firing > 0 ? r.konsekuen : 'zero'}">${r.label}</span></td>
+      </tr>
+    `;
+  });
+
+  /* ─── STEP 2b: Alpha ─── */
+  document.getElementById('a-rendah').textContent = data.alpha.rendah;
+  document.getElementById('a-sedang').textContent = data.alpha.sedang;
+  document.getElementById('a-tinggi').textContent = data.alpha.tinggi;
+
+  /* ─── STEP 3: Defuzzifikasi ─── */
+  const dd = data.defuzzifikasi;
+  drawDefuChart('chartDefu',
+    dd.points.rendah, dd.points.sedang, dd.points.tinggi,
+    dd.points.aggregated, dd.centroid
+  );
+  document.getElementById('defu-formula-vals').innerHTML = `
+    Σ[x·μ(x)] = <span class="val">${dd.numerator}</span><br>
+    Σ[μ(x)]   = <span class="val">${dd.denominator}</span><br><br>
+    z* = ${dd.numerator} / ${dd.denominator}<br>
+    <strong style="color:var(--cyan);font-size:15px">z* = ${dd.centroid}</strong>
+  `;
+
+  /* ─── STEP 4: Hasil Akhir ─── */
+  const h = data.hasil;
+  document.getElementById('result-value').textContent    = h.nilai;
+  document.getElementById('result-kategori').textContent = h.kategori.toUpperCase();
+  document.getElementById('result-desc').textContent     = h.deskripsi;
+
+  document.getElementById('result-value').style.color    = h.warna;
+  document.getElementById('result-kategori').style.color = h.warna;
+  document.querySelector('.result-panel').style.setProperty('--result-color', h.warna);
+  document.querySelector('.result-panel').style.setProperty('--result-glow', h.warna + '15');
+
+  drawGauge('gaugeCanvas', h.nilai, h.warna);
+
+  // Scroll ke hasil
+  setTimeout(() => {
+    sec.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, 100);
+}
+
+function mfRow(label, val, cls, extraStyle) {
+  const filled = val > 0;
+  const style  = extraStyle ? `style="color:${extraStyle}"` : '';
+  return `
+    <div style="display:flex;align-items:center;gap:10px">
+      <span class="mf-badge ${cls} ${filled ? 'pulse' : ''}" ${style}>
+        ${label}: ${val}
+      </span>
+      <div style="flex:1;height:4px;background:#091220;border-radius:2px">
+        <div style="width:${val*100}%;height:100%;background:currentColor;border-radius:2px;transition:width .3s"></div>
+      </div>
+    </div>
+  `;
+}
+
+/* ════════════════════════════════════════════════════
+   INITIALIZATION
+   ════════════════════════════════════════════════════ */
+
+window.addEventListener('load', () => {
+  // Init slider display
+  document.getElementById('disp-jam').textContent = '09:00';
+  document.getElementById('sl-jam').value = 9;
+  document.getElementById('inp-jam').value = 9;
+  // Draw initial charts
+  renderStaticCharts(0, 0, 9);
+  updateMFBadges();
+});
+
+window.addEventListener('resize', () => {
+  const freq = +document.getElementById('sl-freq').value;
+  const nom  = +document.getElementById('sl-nom').value;
+  const jam  = +document.getElementById('sl-jam').value;
+  renderStaticCharts(freq, nom, jam);
+});
+</script>
+
+</body>
+</html>
