@@ -5,10 +5,11 @@
 
 # 🔍 FuzzyGuard — Sistem Deteksi Kecurigaan Transaksi Bank
 
-> **Tugas Kecerdasan Buatan** — Sistem Inferensi Fuzzy Mamdani berbasis Web  
+Sistem Inferensi Fuzzy Mamdani berbasis Web  
 > Mendeteksi potensi aktivitas judi online berdasarkan pola transaksi rekening bank.
 
 ---
+## Link website: https://fandy456.pythonanywhere.com/
 
 ## 📋 Daftar Isi
 
