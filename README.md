@@ -589,7 +589,4 @@ Kategori : TINGGI ✘
 | JavaScript (Vanilla) | ES6+ | Logika frontend, sync slider, AJAX fetch |
 | Google Fonts | — | Tipografi: Orbitron, Rajdhani, Share Tech Mono |
 
-> **Tidak menggunakan:** `scikit-fuzzy`, `numpy`, `matplotlib`, atau library fuzzy lainnya.  
-> Seluruh perhitungan fuzzy diimplementasi secara manual dari nol.
-
 ---
